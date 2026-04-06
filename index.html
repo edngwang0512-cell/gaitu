@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>工地現場紀錄</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f5f6fa; max-width: 480px; margin: 0 auto; min-height: 100vh; }
+  .header { background: linear-gradient(135deg, #1F3864, #2E75B6); color: #fff; padding: 16px 20px; position: sticky; top: 0; z-index: 10; }
+  .header-top { display: flex; align-items: center; justify-content: space-between; }
+  .header-title { font-size: 18px; font-weight: bold; }
+  .header-sub { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+  .header-stats { display: flex; gap: 8px; margin-top: 12px; }
+  .stat-box { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 4px 10px; font-size: 11px; text-align: center; }
+  .stat-box b { display: block; font-size: 15px; }
+  .btn { border: none; border-radius: 20px; padding: 8px 16px; font-weight: bold; cursor: pointer; font-size: 13px; }
+  .btn-new { background: #fff; color: #1F3864; }
+  .btn-back { background: rgba(255,255,255,0.2); color: #fff; }
+  .content { padding: 16px; }
+  .filters { margin-bottom: 12px; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .filter-btn { padding: 4px 10px; border-radius: 12px; border: none; cursor: pointer; font-size: 12px; background: #e0e0e0; color: #555; }
+  .filter-btn.active { color: #fff; font-weight: bold; }
+  .empty { text-align: center; padding: 48px; color: #aaa; }
+  .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+  .card-inner { display: flex; justify-content: space-between; align-items: flex-start; }
+  .card-left { flex: 1; margin-right: 8px; }
+  .card-title { font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+  .card-meta { font-size: 12px; color: #666; margin-bottom: 6px; }
+  .card-desc { font-size: 12px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .card-photo { margin-top: 8px; width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; }
+  .badge { border-radius: 8px; padding: 2px 8px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+  .form-box { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+  .form-group { margin-bottom: 14px; }
+  .form-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .form-row .form-group { flex: 1; margin-bottom: 0; }
+  label { display: block; font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
+  input, select, textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 14px; outline: none; background: #fafafa; font-family: Arial, sans-serif; }
+  textarea { height: 90px; resize: vertical; }
+  .photo-btn { width: 100%; padding: 10px; border-radius: 8px; border: 2px dashed #ccc; background: #fafafa; cursor: pointer; color: #888; font-size: 13px; }
+  .photo-preview { position: relative; margin-top: 8px; }
+  .photo-preview img { width: 100%; border-radius: 8px; max-height: 200px; object-fit: cover; }
+  .photo-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.5); color: #fff; border: none; border-radius: 50%; width: 26px; height: 26px; cursor: pointer; font-size: 14px; }
+  .btn-save { width: 100%; padding: 13px; background: linear-gradient(135deg, #1F3864, #2E75B6); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; margin-bottom: 8px; }
+  .btn-delete { width: 100%; padding: 11px; background: #fdecea; color: #c0392b; border: 1px solid #f1948a; border-radius: 10px; font-size: 14px; cursor: pointer; }
+  .detail-box { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+  .detail-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .detail-title { font-size: 17px; font-weight: bold; color: #1F3864; flex: 1; margin-right: 8px; }
+  .btn-edit { background: #eaf2fb; color: #2E75B6; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: bold; }
+  .detail-badges { display: flex; gap: 6px; margin-bottom: 14px; }
+  .detail-info { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 14px; font-size: 13px; }
+  .detail-info div { margin-bottom: 6px; }
+  .detail-section-title { font-size: 12px; color: #888; margin-bottom: 6px; font-weight: bold; }
+  .detail-desc { font-size: 14px; color: #333; line-height: 1.6; background: #fafafa; padding: 10px; border-radius: 8px; margin-bottom: 14px; }
+  .detail-photo { width: 100%; border-radius: 8px; max-height: 250px; object-fit: cover; margin-bottom: 14px; }
+  .status-btns { display: flex; gap: 8px; margin-bottom: 14px; }
+  .status-btn { flex: 1; padding: 8px 4px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const CATEGORIES=["電力","空調","消防","弱電","給排水","土建","其他"];
+const STATUSES=["待處理","處理中","已完成"];
+const STATUS_COLOR={"待處理":"#e74c3c","處理中":"#f39c12","已完成":"#27ae60"};
+const STATUS_BG={"待處理":"#fdecea","處理中":"#fef9e7","已完成":"#eafaf1"};
+const CAT_COLOR={"電力":"#2980b9","空調":"#8e44ad","消防":"#c0392b","弱電":"#16a085","給排水":"#2471a3","土建":"#784212","其他":"#7f8c8d"};
+const STORAGE_KEY="site-records-v1";
+let records=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
+let view="list",editing=null,filterCat="全部",filterStatus="全部";
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(records));}
+function formatDate(iso){if(!iso)return"";const d=new Date(iso);return d.getFullYear()+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");}
+function todayISO(){return new Date().toISOString().slice(0,10);}
+function render(){
+  const app=document.getElementById("app");app.innerHTML="";
+  const header=document.createElement("div");header.className="header";
+  const filtered=records.filter(r=>(filterCat==="全部"||r.category===filterCat)&&(filterStatus==="全部"||r.status===filterStatus));
+  const counts={};STATUSES.forEach(s=>counts[s]=records.filter(r=>r.status===s).length);
+  header.innerHTML='<div class="header-top"><div><div class="header-title">&#x1F3D7; 工地現場紀錄</div><div class="header-sub">共 '+records.length+' 筆紀錄</div></div><button class="btn '+(view==="list"?"btn-new":"btn-back")+'" id="header-btn">'+(view==="list"?"＋ 新增":"← 返回")+'</button></div>'+(view==="list"?'<div class="header-stats">'+STATUSES.map(s=>'<div class="stat-box"><b>'+counts[s]+'</b>'+s+'</div>').join("")+'</div>':"");
+  header.querySelector("#header-btn").onclick=()=>{if(view==="list"){editing=null;view="form";render();}else{view="list";editing=null;render();}};
+  app.appendChild(header);
+  const content=document.createElement("div");content.className="content";
+  if(view==="list")renderList(content,filtered);
+  else if(view==="form")renderForm(content);
+  else if(view==="detail")renderDetail(content);
+  app.appendChild(content);
+}
+function renderList(container,filtered){
+  const filters=document.createElement("div");filters.className="filters";
+  filters.innerHTML='<div class="filter-row">'+["全部",...CATEGORIES].map(c=>'<button class="filter-btn'+(filterCat===c?" active":"")+'" data-cat="'+c+'" style="'+(filterCat===c?"background:"+(CAT_COLOR[c]||"#1F3864"):"")+'">'+c+'</button>').join("")+'</div><div class="filter-row">'+["全部",...STATUSES].map(s=>'<button class="filter-btn'+(filterStatus===s?" active":"")+'" data-status="'+s+'" style="'+(filterStatus===s?"background:"+(STATUS_COLOR[s]||"#555"):"")+'">'+s+'</button>').join("")+'</div>';
+  filters.querySelectorAll("[data-cat]").forEach(btn=>{btn.onclick=()=>{filterCat=btn.dataset.cat;render();};});
+  filters.querySelectorAll("[data-status]").forEach(btn=>{btn.onclick=()=>{filterStatus=btn.dataset.status;render();};});
+  container.appendChild(filters);
+  if(filtered.length===0){container.innerHTML+='<div class="empty"><div style="font-size:40px">📋</div><div style="margin-top:8px">尚無紀錄，點右上角新增</div></div>';return;}
+  filtered.forEach(rec=>{
+    const card=document.createElement("div");card.className="card";
+    card.style.borderLeft="4px solid "+(CAT_COLOR[rec.category]||"#999");
+    card.innerHTML='<div class="card-inner"><div class="card-left"><div class="card-title">'+(rec.title||"（無標題）")+'</div><div class="card-meta">&#x1F4CD; '+(rec.location||"－")+' | &#x1F4C5; '+formatDate(rec.date)+'</div>'+(rec.description?'<div class="card-desc">'+rec.description+'</div>':"")+'</div><div class="card-right"><span class="badge" style="background:'+STATUS_BG[rec.status]+';color:'+STATUS_COLOR[rec.status]+';border:1px solid '+STATUS_COLOR[rec.status]+'">'+rec.status+'</span><span class="badge" style="background:'+(CAT_COLOR[rec.category]||"#999")+';color:#fff">'+rec.category+'</span></div></div>'+(rec.photo?'<img class="card-photo" src="'+rec.photo+'">':'');
+    card.onclick=()=>{editing=rec;view="detail";render();};
+    container.appendChild(card);
+  });
+}
+function renderForm(container){
+  const form=editing?{...editing}:{title:"",location:"",date:todayISO(),category:"電力",status:"待處理",description:"",reporter:"",photo:""};
+  const box=document.createElement("div");box.className="form-box";
+  box.innerHTML='<div class="form-group"><label>問題標題 *</label><input id="f-title" placeholder="例：B1 配電盤跳脫" value="'+form.title+'"></div><div class="form-row"><div class="form-group"><label>日期</label><input type="date" id="f-date" value="'+form.date+'"></div><div class="form-group"><label>記錄人</label><input id="f-reporter" placeholder="姓名" value="'+form.reporter+'"></div></div><div class="form-group"><label>現場位置</label><input id="f-location" placeholder="例：B2F 機電室" value="'+form.location+'"></div><div class="form-row"><div class="form-group"><label>分類</label><select id="f-category">'+CATEGORIES.map(c=>'<option'+(form.category===c?" selected":"")+'>'+c+'</option>').join("")+'</select></div><div class="form-group"><label>狀態</label><select id="f-status">'+STATUSES.map(s=>'<option'+(form.status===s?" selected":"")+'>'+s+'</option>').join("")+'</select></div></div><div class="form-group"><label>問題描述</label><textarea id="f-desc" placeholder="詳細描述現場狀況...">'+form.description+'</textarea></div><div class="form-group"><label>現場照片</label><input type="file" id="f-file" accept="image/*" style="display:none"><button class="photo-btn" id="photo-trigger">&#x1F4F7; 拍照或選擇圖片</button><div id="photo-preview" style="display:'+(form.photo?"block":"none")+'"><img id="photo-img" src="'+form.photo+'" style="width:100%;border-radius:8px"><button class="photo-remove" id="photo-remove">✕</button></div></div><button class="btn-save" id="btn-save">&#x1F4BE; 儲存紀錄</button>'+(editing?'<button class="btn-delete" id="btn-del">&#x1F5D1; 刪除此紀錄</button>':"");
+  box.querySelector("#photo-trigger").onclick=()=>box.querySelector("#f-file").click();
+  box.querySelector("#f-file").onchange=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{form.photo=ev.target.result;box.querySelector("#photo-img").src=form.photo;box.querySelector("#photo-preview").style.display="block";};reader.readAsDataURL(file);};
+  box.querySelector("#photo-remove").onclick=()=>{form.photo="";box.querySelector("#photo-preview").style.display="none";};
+  box.querySelector("#btn-save").onclick=()=>{const title=box.querySelector("#f-title").value.trim();if(!title){alert("請填寫問題標題");return;}const rec={...form,title,location:box.querySelector("#f-location").value,date:box.querySelector("#f-date").value,reporter:box.querySelector("#f-reporter").value,category:box.querySelector("#f-category").value,status:box.querySelector("#f-status").value,description:box.querySelector("#f-desc").value};if(rec.id){records=records.map(r=>r.id===rec.id?rec:r);}else{rec.id=Date.now().toString();records.unshift(rec);}save();view="list";editing=null;render();};
+  if(editing){box.querySelector("#btn-del").onclick=()=>{if(confirm("確定刪除？")){records=records.filter(r=>r.id!==editing.id);save();view="list";editing=null;render();}};}
+  container.appendChild(box);
+}
+function renderDetail(container){
+  const rec=editing;const box=document.createElement("div");box.className="detail-box";
+  box.innerHTML='<div class="detail-top"><div class="detail-title">'+rec.title+'</div><button class="btn-edit" id="btn-edit">&#x270F;&#xFE0F; 編輯</button></div><div class="detail-badges"><span class="badge" style="background:'+(CAT_COLOR[rec.category]||"#999")+';color:#fff">'+rec.category+'</span><span class="badge" style="background:'+STATUS_BG[rec.status]+';color:'+STATUS_COLOR[rec.status]+';border:1px solid '+STATUS_COLOR[rec.status]+'">'+rec.status+'</span></div><div class="detail-info"><div>&#x1F4C5; <b>日期：</b>'+formatDate(rec.date)+'</div><div>&#x1F4CD; <b>位置：</b>'+(rec.location||"－")+'</div><div>&#x1F477; <b>記錄人：</b>'+(rec.reporter||"－")+'</div></div>'+(rec.description?'<div class="detail-section-title">問題描述</div><div class="detail-desc">'+rec.description+'</div>':"")+(rec.photo?'<div class="detail-section-title">現場照片</div><img class="detail-photo" src="'+rec.photo+'">':'')+'<div class="detail-section-title">更新狀態</div><div class="status-btns">'+STATUSES.map(s=>'<button class="status-btn" data-status="'+s+'" style="border:2px solid '+STATUS_COLOR[s]+';background:'+(rec.status===s?STATUS_COLOR[s]:STATUS_BG[s])+';color:'+(rec.status===s?"#fff":STATUS_COLOR[s])+'">'+s+'</button>').join("")+'</div><button class="btn-delete" id="btn-del">&#x1F5D1; 刪除此紀錄</button>';
+  box.querySelector("#btn-edit").onclick=()=>{view="form";render();};
+  box.querySelectorAll("[data-status]").forEach(btn=>{btn.onclick=()=>{editing={...rec,status:btn.dataset.status};records=records.map(r=>r.id===editing.id?editing:r);save();render();};});
+  box.querySelector("#btn-del").onclick=()=>{if(confirm("確定刪除？")){records=records.filter(r=>r.id!==rec.id);save();view="list";editing=null;render();}};
+  container.appendChild(box);
+}
+render();
+</script>
+</body>
+</html>
