@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>改圖追蹤系統</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useRef } = React;
+
+const MANAGER = "主管";
+const DEFAULT_TEAM = ["小明", "小華", "小美", "小強", "小玲"];
+function loadTeam() { try { return JSON.parse(localStorage.getItem("teamMembers")) || DEFAULT_TEAM; } catch { return DEFAULT_TEAM; } }
+function saveTeam(arr) { localStorage.setItem("teamMembers", JSON.stringify(arr)); }
+const DEFAULT_SYS = ["電氣", "弱電", "消防電", "消防水", "給水", "排水"];
+const DEFAULT_LAY = ["柱牆放樣", "天花放樣", "SEM", "套管", "給排水放樣", "隔間放樣"];
+
+function loadTypes(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } }
+function saveTypes(key, arr) { localStorage.setItem(key, JSON.stringify(arr)); }
+
+const C = {
+  bg:     "#f0f2f5",
+  sur:    "#ffffff",
+  sur2:   "#f5f6f8",
+  bor:    "#e2e5eb",
+  bor2:   "#d0d4dc",
+  acc:    "#2563eb",
+  acc2:   "#7c3aed",
+  grn:    "#16a34a",
+  grn2:   "#dcfce7",
+  red:    "#dc2626",
+  red2:   "#fee2e2",
+  yel:    "#d97706",
+  yel2:   "#fef3c7",
+  txt:    "#111827",
+  txt2:   "#4b5563",
+  txt3:   "#9ca3af",
+  shadow: "0 1px 4px rgba(0,0,0,0.08)",
+  shadow2:"0 2px 12px rgba(0,0,0,0.10)",
+};
+
+function fmtDT(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+const initProjects = {
+  p1: { name:"台北辦公大樓新建工程", code:"2024-MEP-001", createdAt: Date.now()-86400000*3 },
+  p2: { name:"新竹廠房機電工程",     code:"2024-MEP-002", createdAt: Date.now()-86400000 },
+};
+const initTasks = {
+  t1: { projectKey:"p1", category:"系統圖", type:"電氣",    desc:"B1配電室單線圖需增加EPS迴路，並修正變壓器容量標示", assignee:"小明", done:true,  doneAt:Date.now()-3600000, note:"已依圖說修正完畢", createdAt:Date.now()-86400000*2, photo:"" },
+  t2: { projectKey:"p1", category:"放樣圖", type:"天花放樣", desc:"3F空調FCU位置需向南移動50cm，避開結構樑",           assignee:"小華", done:false, doneAt:null, note:"", createdAt:Date.now()-86400000, photo:"" },
+  t3: { projectKey:"p1", category:"系統圖", type:"消防水",  desc:"消防系統圖修正，加入B2F灑水頭平面配置",             assignee:"小美", done:false, doneAt:null, note:"", createdAt:Date.now()-3600000*5, photo:"" },
+  t4: { projectKey:"p2", category:"放樣圖", type:"套管",    desc:"廠房電力套管位置依業主最新指示調整",                 assignee:"小強", done:false, doneAt:null, note:"", createdAt:Date.now()-3600000*2, photo:"" },
+};
+
+// ── 共用樣式 ──
+const card  = { background:C.sur, border:`1px solid ${C.bor}`, borderRadius:12, padding:14, marginBottom:10, boxShadow:C.shadow };
+const fcard = { background:C.sur, border:`1px solid ${C.bor}`, borderRadius:12, padding:16, marginBottom:10, boxShadow:C.shadow };
+const inp   = { width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${C.bor2}`, background:C.sur2, color:C.txt, fontSize:14, fontFamily:"Arial,sans-serif", outline:"none", boxSizing:"border-box" };
+const txa   = { ...inp, resize:"vertical", minHeight:80 };
+const lbl   = { display:"block", fontSize:11, fontWeight:700, color:C.txt3, marginBottom:5, letterSpacing:1 };
+
+function Btn({ children, onClick, style={}, variant="primary", size="md" }) {
+  const base = { border:"none", borderRadius:8, cursor:"pointer", fontFamily:"Arial,sans-serif", fontWeight:700, transition:"opacity .15s" };
+  const sizes = { sm:{ padding:"5px 11px", fontSize:12 }, md:{ padding:"8px 15px", fontSize:13 }, lg:{ padding:"12px", fontSize:15, width:"100%", borderRadius:10, marginBottom:8 } };
+  const vars = {
+    primary: { background:C.acc,  color:"#fff" },
+    purple:  { background:C.acc2, color:"#fff" },
+    ghost:   { background:C.sur2, color:C.txt2, border:`1px solid ${C.bor2}` },
+    danger:  { background:C.red2, color:C.red,  border:`1px solid #fca5a5` },
+    success: { background:C.grn2, color:C.grn,  border:`1px solid #86efac` },
+    undo:    { background:C.yel2, color:C.yel,  border:`1px solid #fcd34d` },
+  };
+  return <button onClick={onClick} style={{ ...base, ...sizes[size], ...vars[variant], ...style }}>{children}</button>;
+}
+
+function Badge({ children, variant="blue" }) {
+  const vars = {
+    blue:   { background:"#dbeafe", color:C.acc },
+    purple: { background:"#ede9fe", color:C.acc2 },
+    gray:   { background:C.sur2,   color:C.txt2 },
+    green:  { background:C.grn2,   color:C.grn  },
+  };
+  return <span style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:6, ...vars[variant] }}>{children}</span>;
+}
+
+// ── 可擴充分類 ──
+function TypeSelector({ category, type, onCat, onType }) {
+  const [sys, setSys] = useState(() => loadTypes("sysTypes", DEFAULT_SYS));
+  const [lay, setLay] = useState(() => loadTypes("layTypes", DEFAULT_LAY));
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const isSys = category === "系統圖";
+  const list = isSys ? sys : lay;
+  const accent = isSys ? C.acc : C.acc2;
+  const accentBg = isSys ? "#dbeafe" : "#ede9fe";
+
+  const addItem = () => {
+    const n = newName.trim();
+    if (!n) return;
+    if (list.includes(n)) { alert("已存在"); return; }
+    const updated = [...list, n];
+    if (isSys) { setSys(updated); saveTypes("sysTypes", updated); }
+    else { setLay(updated); saveTypes("layTypes", updated); }
+    onType(n); setNewName(""); setAdding(false);
+  };
+  const removeItem = (t) => {
+    if (!confirm(`確定刪除「${t}」？`)) return;
+    const updated = list.filter(x => x !== t);
+    if (isSys) { setSys(updated); saveTypes("sysTypes", updated); }
+    else { setLay(updated); saveTypes("layTypes", updated); }
+    if (type === t) onType("");
+  };
+
+  return (
+    <div style={fcard}>
+      <div style={lbl}>大類</div>
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {["系統圖","放樣圖"].map(cat => {
+          const active = category === cat;
+          const col = cat==="系統圖" ? C.acc : C.acc2;
+          return (
+            <button key={cat} style={{ flex:1, padding:10, borderRadius:8, border:`1.5px solid ${active?col:C.bor2}`, background:active?(cat==="系統圖"?"#dbeafe":"#ede9fe"):C.sur2, color:active?col:C.txt2, cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"Arial,sans-serif" }}
+              onClick={() => { onCat(cat); onType(""); setAdding(false); setNewName(""); }}>{cat}</button>
+          );
+        })}
+      </div>
+
+      {category && (<>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+          <div style={lbl}>細項分類</div>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom: adding?12:0 }}>
+          {list.map(t => (
+            <div key={t} style={{ display:"flex" }}>
+              <button style={{ padding:"6px 11px", borderRadius:"8px 0 0 8px", border:`1.5px solid ${type===t?accent:C.bor2}`, borderRight:"none", background:type===t?accentBg:C.sur2, color:type===t?accent:C.txt2, cursor:"pointer", fontSize:13, fontWeight:type===t?700:400, fontFamily:"Arial,sans-serif" }}
+                onClick={() => onType(t)}>{t}</button>
+              <button title="刪除" style={{ padding:"6px 8px", borderRadius:"0 8px 8px 0", border:`1.5px solid ${type===t?accent:C.bor2}`, background:type===t?accentBg:C.sur2, color:C.txt3, cursor:"pointer", fontSize:12 }}
+                onClick={() => removeItem(t)}>×</button>
+            </div>
+          ))}
+          {!adding && (
+            <button style={{ padding:"6px 12px", borderRadius:8, border:`1.5px dashed ${accent}`, background:"transparent", color:accent, cursor:"pointer", fontSize:13, fontWeight:700 }}
+              onClick={() => setAdding(true)}>＋ 新增</button>
+          )}
+        </div>
+        {adding && (
+          <div style={{ display:"flex", gap:8 }}>
+            <input autoFocus style={{ ...inp, flex:1 }} placeholder="輸入新分類名稱" value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => { if(e.key==="Enter") addItem(); if(e.key==="Escape"){setAdding(false);setNewName("");} }} />
+            <Btn onClick={addItem} variant={isSys?"primary":"purple"}>確認</Btn>
+            <Btn onClick={() => { setAdding(false); setNewName(""); }} variant="ghost">取消</Btn>
+          </div>
+        )}
+      </>)}
+    </div>
+  );
+}
+
+// ── 組員管理 ──
+function TeamManager({ team, onUpdate, onClose }) {
+  const [list, setList] = useState([...team]);
+  const [newName, setNewName] = useState("");
+
+  const addMember = () => {
+    const n = newName.trim();
+    if (!n) return;
+    if (list.includes(n)) { alert("已存在"); return; }
+    setList([...list, n]);
+    setNewName("");
+  };
+  const removeMember = (n) => setList(list.filter(x => x !== n));
+  const handleSave = () => { onUpdate(list); onClose(); };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.4)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={onClose}>
+      <div style={{ background:C.sur, borderRadius:"16px 16px 0 0", padding:20, width:"100%", maxWidth:420, boxShadow:C.shadow2 }} onClick={e=>e.stopPropagation()}>
+        <div style={{ fontSize:15, fontWeight:700, color:C.txt, marginBottom:4 }}>👥 組員管理</div>
+        <div style={{ fontSize:12, color:C.txt3, marginBottom:14 }}>新增或刪除組員名單</div>
+        <div style={{ marginBottom:12 }}>
+          {list.map(n => (
+            <div key={n} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:8, background:C.sur2, border:`1px solid ${C.bor}`, marginBottom:6 }}>
+              <span style={{ fontSize:14, color:C.txt }}>{n}</span>
+              <button onClick={() => removeMember(n)} style={{ background:C.red2, border:"none", color:C.red, borderRadius:6, padding:"3px 10px", cursor:"pointer", fontSize:12, fontWeight:700 }}>移除</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+          <input style={{ flex:1, padding:"10px 12px", borderRadius:8, border:`1px solid ${C.bor2}`, background:C.sur2, color:C.txt, fontSize:14, fontFamily:"Arial,sans-serif", outline:"none" }}
+            placeholder="輸入新組員名字" value={newName} onChange={e=>setNewName(e.target.value)}
+            onKeyDown={e => e.key==="Enter" && addMember()} />
+          <button onClick={addMember} style={{ padding:"10px 16px", borderRadius:8, border:"none", background:C.acc, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>新增</button>
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={onClose} style={{ flex:1, padding:12, borderRadius:10, border:`1px solid ${C.bor2}`, background:C.sur2, color:C.txt2, fontSize:14, fontWeight:700, cursor:"pointer" }}>取消</button>
+          <button onClick={handleSave} style={{ flex:1, padding:12, borderRadius:10, border:"none", background:C.acc, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── NoteModal ──
+function NoteModal({ init, onSave, onClose }) {
+  const [note, setNote] = useState(init);
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.4)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={onClose}>
+      <div style={{ background:C.sur, borderRadius:"16px 16px 0 0", padding:20, width:"100%", maxWidth:420, boxShadow:C.shadow2 }} onClick={e=>e.stopPropagation()}>
+        <div style={{ fontSize:15, fontWeight:700, color:C.txt, marginBottom:12 }}>💬 加入備註</div>
+        <textarea style={{ ...txa, height:90 }} placeholder="輸入備註說明..." value={note} onChange={e=>setNote(e.target.value)} />
+        <div style={{ display:"flex", gap:8, marginTop:12 }}>
+          <Btn onClick={onClose} variant="ghost" size="lg" style={{ marginBottom:0 }}>取消</Btn>
+          <Btn onClick={() => onSave(note)} size="lg" style={{ marginBottom:0 }}>儲存</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── NewTaskScreen ──
+function NewTaskScreen({ me, currentProj, onSave, onBack, team }) {
+  const [category, setCategory] = useState("");
+  const [type, setType] = useState("");
+  const [desc, setDesc] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [photo, setPhoto] = useState("");
+  const fileRef = useRef();
+
+  return (
+    <div style={{ fontFamily:"'Noto Sans TC',Arial,sans-serif", background:C.bg, color:C.txt, minHeight:"100vh", maxWidth:420, margin:"0 auto" }}>
+      <div style={{ background:C.sur, borderBottom:`1px solid ${C.bor}`, padding:"13px 16px", display:"flex", alignItems:"center", gap:10, position:"sticky", top:0, zIndex:10, boxShadow:C.shadow }}>
+        <button style={{ background:"none", border:"none", color:C.txt2, fontSize:20, cursor:"pointer", padding:"0 4px" }} onClick={onBack}>←</button>
+        <div style={{ fontSize:16, fontWeight:700, color:C.txt }}>新增改圖任務</div>
+      </div>
+      <div style={{ padding:16 }}>
+        <TypeSelector category={category} type={type} onCat={setCategory} onType={setType} />
+
+        <div style={fcard}>
+          <div style={{ marginBottom:12 }}>
+            <label style={lbl}>修正內容</label>
+            <textarea style={txa} placeholder="說明本次需要修改的內容..." value={desc} onChange={e=>setDesc(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>上傳會議照片</label>
+            <input type="file" ref={fileRef} accept="image/*" style={{ display:"none" }} onChange={e => {
+              const f = e.target.files[0]; if (!f) return;
+              const r = new FileReader(); r.onload = ev => setPhoto(ev.target.result); r.readAsDataURL(f);
+            }} />
+            <button style={{ width:"100%", padding:12, borderRadius:8, border:`1.5px dashed ${C.bor2}`, background:C.sur2, color:C.txt3, cursor:"pointer", fontSize:13 }} onClick={() => fileRef.current.click()}>
+              📷 拍照 / 選擇圖片
+            </button>
+            {photo && <img src={photo} style={{ width:"100%", borderRadius:8, maxHeight:140, objectFit:"cover", marginTop:8 }} />}
+          </div>
+        </div>
+
+        <div style={fcard}>
+          <div style={lbl}>指定負責人</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            {team.map(n => (
+              <button key={n} style={{ padding:10, borderRadius:8, border:`1.5px solid ${assignee===n?C.acc:C.bor2}`, background:assignee===n?"#dbeafe":C.sur2, color:assignee===n?C.acc:C.txt2, cursor:"pointer", fontSize:13, fontWeight:assignee===n?700:400, fontFamily:"Arial,sans-serif" }}
+                onClick={() => setAssignee(n)}>{n}</button>
+            ))}
+          </div>
+        </div>
+
+        <Btn size="lg" onClick={() => {
+          if (!category)    { alert("請選擇大類"); return; }
+          if (!type)        { alert("請選擇細項"); return; }
+          if (!desc.trim()) { alert("請填寫修正內容"); return; }
+          if (!assignee)    { alert("請選擇負責人"); return; }
+          onSave({ projectKey:currentProj, category, type, desc, assignee, photo, done:false, doneAt:null, note:"", createdAt:Date.now(), createdBy:me });
+        }}>發派任務</Btn>
+        <Btn size="lg" variant="ghost" onClick={onBack} style={{ marginBottom:0 }}>取消</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════
+function App() {
+  const [me, setMe]               = useState(null);
+  const [view, setView]           = useState("projects");
+  const [projects, setProjects]   = useState(initProjects);
+  const [tasks, setTasks]         = useState(initTasks);
+  const [currentProj, setCurrentProj] = useState(null);
+  const [tab, setTab]             = useState("all");
+  const [noteModal, setNoteModal] = useState(null);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [team, setTeam]           = useState(loadTeam);
+  const [showTeamMgr, setShowTeamMgr] = useState(false);
+  const [newProjName, setNewProjName] = useState("");
+  const [newProjCode, setNewProjCode] = useState("");
+
+  const [lastDeleted, setLastDeleted] = useState(null); // { key, task }
+
+  const updateTask = (key, patch) => setTasks(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  const deleteTask = (key) => {
+    setLastDeleted({ key, task: tasks[key] });
+    setTasks(prev => { const n={...prev}; delete n[key]; return n; });
+  };
+  const undoDelete = () => {
+    if (!lastDeleted) return;
+    setTasks(prev => ({ ...prev, [lastDeleted.key]: lastDeleted.task }));
+    setLastDeleted(null);
+  };
+
+  // ── 選身份 ──
+  if (!me) return (
+    <div style={{ fontFamily:"'Noto Sans TC',Arial,sans-serif", background:C.bg, minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ fontSize:11, letterSpacing:4, color:C.acc, fontWeight:700, marginBottom:8 }}>改圖追蹤系統</div>
+      <div style={{ fontSize:24, fontWeight:900, color:C.txt, marginBottom:4 }}>你是誰？</div>
+      <div style={{ fontSize:13, color:C.txt2, marginBottom:28 }}>選擇你的名字開始使用</div>
+      <div style={{ background:C.sur, border:`1px solid ${C.bor}`, borderRadius:16, padding:24, width:"100%", maxWidth:340, boxShadow:C.shadow2 }}>
+        <div style={lbl}>主管</div>
+        <div onClick={() => setMe(MANAGER)} style={{ background:"#ede9fe", border:`1.5px solid ${C.acc2}`, borderRadius:10, padding:14, textAlign:"center", cursor:"pointer", marginBottom:16, fontSize:15, fontWeight:700, color:C.acc2 }}>
+          👑 {MANAGER}
+        </div>
+        <div style={{ borderTop:`1px solid ${C.bor}`, margin:"0 0 14px" }} />
+        <div style={lbl}>團隊成員</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          {team.map(n => (
+            <div key={n} onClick={() => setMe(n)} style={{ background:C.sur2, border:`1px solid ${C.bor}`, borderRadius:10, padding:12, textAlign:"center", cursor:"pointer", fontSize:14, fontWeight:500, color:C.txt }}>
+              {n}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const isManager = me === MANAGER;
+
+  const Header = ({ onBack, title }) => (
+    <div style={{ background:C.sur, borderBottom:`1px solid ${C.bor}`, padding:"13px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10, boxShadow:C.shadow }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        {onBack && <button style={{ background:"none", border:"none", color:C.txt2, fontSize:20, cursor:"pointer", padding:"0 4px" }} onClick={onBack}>←</button>}
+        {title
+          ? <div style={{ fontSize:16, fontWeight:700, color:C.txt }}>{title}</div>
+          : <div style={{ fontFamily:"monospace", fontSize:13, color:C.acc, letterSpacing:2, fontWeight:700 }}>改圖追蹤</div>
+        }
+      </div>
+      <div style={{ background:C.sur2, border:`1px solid ${C.bor}`, borderRadius:20, padding:"5px 12px", fontSize:12, color:C.txt2, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}
+        onClick={() => { setMe(null); setView("projects"); }}>
+        <div style={{ width:7, height:7, background:C.grn, borderRadius:"50%" }} />
+        {me}{isManager?" 👑":""}
+      </div>
+    </div>
+  );
+
+  const wrap = { fontFamily:"'Noto Sans TC',Arial,sans-serif", background:C.bg, color:C.txt, minHeight:"100vh", maxWidth:420, margin:"0 auto" };
+
+  // ── 案子列表 ──
+  if (view === "projects") return (
+    <div style={wrap}>
+      <Header />
+      <div style={{ padding:16 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:C.txt3, letterSpacing:2 }}>PROJECTS</div>
+          <div style={{ display:"flex", gap:8 }}>
+            {isManager && <Btn variant="ghost" onClick={() => setShowTeamMgr(true)}>👥 組員</Btn>}
+            {isManager && <Btn onClick={() => setView("newProject")}>＋ 新增案子</Btn>}
+          </div>
+        </div>
+        {showTeamMgr && <TeamManager team={team} onUpdate={t => { setTeam(t); saveTeam(t); }} onClose={() => setShowTeamMgr(false)} />}
+        {Object.entries(projects).length === 0
+          ? <div style={{ textAlign:"center", padding:"52px 20px", color:C.txt3 }}><div style={{ fontSize:36 }}>📁</div><div style={{ marginTop:10 }}>尚無案子</div></div>
+          : Object.entries(projects).map(([key, proj]) => {
+              const pt = Object.values(tasks).filter(t => t.projectKey === key);
+              const done = pt.filter(t => t.done).length;
+              const pct = pt.length ? Math.round(done/pt.length*100) : 0;
+              return (
+                <div key={key} style={{ ...card, cursor:"pointer" }} onClick={() => { setCurrentProj(key); setTab("all"); setView("tasks"); }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                    <div style={{ fontSize:15, fontWeight:700, color:C.txt }}>{proj.name}</div>
+                    {proj.code && <span style={{ fontFamily:"monospace", fontSize:11, color:C.acc, background:"#dbeafe", padding:"3px 8px", borderRadius:6 }}>{proj.code}</span>}
+                  </div>
+                  <div style={{ display:"flex", gap:14 }}>
+                    {[["任務",pt.length],["完成",done],["進度",`${pct}%`]].map(([l,v]) => (
+                      <div key={l} style={{ fontSize:12, color:C.txt2 }}>{l} <b style={{ color:C.txt }}>{v}</b></div>
+                    ))}
+                  </div>
+                  <div style={{ height:4, background:C.bor, borderRadius:2, marginTop:10, overflow:"hidden" }}>
+                    <div style={{ height:"100%", background:`linear-gradient(90deg,${C.acc},${C.grn})`, borderRadius:2, width:`${pct}%`, transition:"width .4s" }} />
+                  </div>
+                </div>
+              );
+            })
+        }
+      </div>
+    </div>
+  );
+
+  // ── 新增案子 ──
+  if (view === "newProject") {
+    return (
+      <div style={wrap}>
+        <Header onBack={() => { setView("projects"); setNewProjName(""); setNewProjCode(""); }} title="新增案子" />
+        <div style={{ padding:16 }}>
+          <div style={fcard}>
+            <div style={{ marginBottom:12 }}>
+              <label style={lbl}>案子名稱</label>
+              <input style={inp} placeholder="例：台北辦公大樓新建工程" value={newProjName} onChange={e=>setNewProjName(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>案號（選填）</label>
+              <input style={inp} placeholder="例：2024-MEP-001" value={newProjCode} onChange={e=>setNewProjCode(e.target.value)} />
+            </div>
+          </div>
+          <Btn size="lg" onClick={() => {
+            if (!newProjName.trim()) { alert("請填寫案子名稱"); return; }
+            setProjects(prev => ({ ...prev, ["p"+Date.now()]: { name:newProjName.trim(), code:newProjCode.trim(), createdAt:Date.now() } }));
+            setNewProjName(""); setNewProjCode("");
+            setView("projects");
+          }}>建立案子</Btn>
+          <Btn size="lg" variant="ghost" onClick={() => { setView("projects"); setNewProjName(""); setNewProjCode(""); }} style={{ marginBottom:0 }}>取消</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 任務列表 ──
+  if (view === "tasks") {
+    const proj = projects[currentProj];
+    const allTasks = Object.entries(tasks).filter(([,t]) => t.projectKey === currentProj);
+    const filtered = allTasks
+      .filter(([,t]) => tab==="sys"?t.category==="系統圖":tab==="lay"?t.category==="放樣圖":tab==="mine"?t.assignee===me:true)
+      .sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+
+    return (
+      <div style={wrap}>
+        <Header onBack={() => setView("projects")} title={proj?.name} />
+        <div style={{ padding:16 }}>
+          {/* Tabs */}
+          <div style={{ display:"flex", gap:6, marginBottom:14, overflowX:"auto", paddingBottom:2 }}>
+            {[["all",`全部(${allTasks.length})`],["sys","系統圖"],["lay","放樣圖"],["mine","我的"]].map(([k,l]) => (
+              <div key={k} style={{ padding:"6px 14px", borderRadius:20, fontSize:13, fontWeight:tab===k?700:400, cursor:"pointer", whiteSpace:"nowrap", border:`1px solid ${tab===k?C.acc:C.bor}`, background:tab===k?C.acc:C.sur, color:tab===k?"#fff":C.txt2, flexShrink:0 }}
+                onClick={() => setTab(k)}>{l}</div>
+            ))}
+          </div>
+
+          {isManager && (
+            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+              <button style={{ flex:1, padding:12, borderRadius:10, border:"none", background:C.acc, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"Arial,sans-serif" }}
+                onClick={() => setView("newTask")}>＋ 新增改圖任務</button>
+              <button
+                onClick={undoDelete}
+                disabled={!lastDeleted}
+                style={{ padding:"12px 14px", borderRadius:10, border:`1.5px solid ${lastDeleted?C.yel:C.bor}`, background:lastDeleted?C.yel2:C.sur2, color:lastDeleted?C.yel:C.txt3, fontSize:13, fontWeight:700, cursor:lastDeleted?"pointer":"default", fontFamily:"Arial,sans-serif", whiteSpace:"nowrap" }}>
+                ↩ 復原刪除
+              </button>
+            </div>
+          )}
+
+          {filtered.length === 0
+            ? <div style={{ textAlign:"center", padding:"52px 20px", color:C.txt3 }}><div style={{ fontSize:36 }}>✅</div><div style={{ marginTop:10, fontSize:14 }}>此分類尚無任務</div></div>
+            : filtered.map(([key, task]) => {
+                const isSys = task.category === "系統圖";
+                const isMe  = task.assignee === me;
+                const canComplete = !isManager && isMe && !task.done;
+                const canUndo     = !isManager && isMe && task.done;
+
+                return (
+                  <div key={key} style={{ ...card, cursor:"default", opacity: task.done ? .75 : 1, borderLeft:`3px solid ${isSys?C.acc:C.acc2}` }}>
+                    {/* 標題列 */}
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        <Badge variant={isSys?"blue":"purple"}>{task.category}</Badge>
+                        <Badge variant="gray">{task.type}</Badge>
+                      </div>
+                      <span style={{ fontSize:12, color:C.txt2 }}>👤 {task.assignee}</span>
+                    </div>
+
+                    {/* 內容 */}
+                    <div style={{ fontSize:14, fontWeight:500, color:C.txt, marginBottom:8, lineHeight:1.6 }}>{task.desc}</div>
+                    {task.photo && <img src={task.photo} style={{ width:"100%", borderRadius:8, maxHeight:160, objectFit:"cover", marginBottom:8, cursor:"pointer" }} onClick={() => setViewPhoto(task.photo)} />}
+                    <div style={{ fontSize:12, color:C.txt3, marginBottom:task.note?8:10 }}>📅 {fmtDT(task.createdAt)}</div>
+                    {task.note && <div style={{ fontSize:12, color:C.txt2, background:C.sur2, borderRadius:8, padding:"8px 10px", marginBottom:10, border:`1px solid ${C.bor}` }}>💬 {task.note}</div>}
+
+                    {/* 動作區 */}
+                    <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                      {task.done && (
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ width:22, height:22, background:C.grn2, border:`2px solid ${C.grn}`, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center", color:C.grn, fontSize:14 }}>✓</div>
+                          <div>
+                            <div style={{ fontSize:13, color:C.grn, fontWeight:700 }}>已完成</div>
+                            <div style={{ fontSize:11, color:C.txt3 }}>{fmtDT(task.doneAt)}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 標記完成 */}
+                      {canComplete && (
+                        <Btn variant="success" size="sm" onClick={() => updateTask(key, { done:true, doneAt:Date.now() })}>
+                          ✓ 標記完成
+                        </Btn>
+                      )}
+
+                      {/* 復原完成 */}
+                      {canUndo && (
+                        <Btn variant="undo" size="sm" onClick={() => {
+                          updateTask(key, { done:false, doneAt:null });
+                        }}>
+                          ↩ 復原
+                        </Btn>
+                      )}
+
+                      {/* 備註 */}
+                      {!task.done && isMe && (
+                        <Btn variant="ghost" size="sm" onClick={() => setNoteModal({ key, note:task.note||"" })}>💬 備註</Btn>
+                      )}
+
+                      {/* 主管操作 */}
+                      {isManager && task.done && (
+                        <Btn variant="undo" size="sm" onClick={() => updateTask(key, { done:false, doneAt:null })}>↩ 復原</Btn>
+                      )}
+                      {isManager && (
+                        <Btn variant="danger" size="sm" onClick={() => deleteTask(key)}>刪除</Btn>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+          }
+        </div>
+
+        {noteModal && <NoteModal init={noteModal.note} onSave={note => { updateTask(noteModal.key, { note }); setNoteModal(null); }} onClose={() => setNoteModal(null)} />}
+        {viewPhoto && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={() => setViewPhoto(null)}>
+            <img src={viewPhoto} style={{ maxWidth:"95%", maxHeight:"90vh", borderRadius:10, boxShadow:C.shadow2 }} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── 新增任務 ──
+  if (view === "newTask") return (
+    <NewTaskScreen me={me} currentProj={currentProj}
+      onSave={task => { setTasks(prev => ({ ...prev, ["t"+Date.now()]: task })); setView("tasks"); }}
+      onBack={() => setView("tasks")}
+      team={team}
+    />
+  );
+
+  return null;
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
